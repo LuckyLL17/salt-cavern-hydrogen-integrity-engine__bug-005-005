@@ -1,31 +1,16 @@
+import { DomainError } from '../errors.ts';
 import type { GeometryPoint } from '../types.ts';
-function segmentArea(radiusM: number): number { return Math.PI * radiusM * radiusM; }
-function segmentSlope(top: GeometryPoint, bottom: GeometryPoint): number { const depth = bottom.depthM - top.depthM; return depth === 0 ? 0 : (bottom.radiusM - top.radiusM) / depth; }
-function midpointRadius(top: GeometryPoint, bottom: GeometryPoint): number { return (top.radiusM + bottom.radiusM) / 2; }
-function finiteVolume(height: number, topArea: number, bottomArea: number, taper: number): number { const trapezoid = height * (topArea + bottomArea) / 2; return trapezoid * (1 - Math.min(0.25, taper * 0.15)); }
-function validatePoint(point: GeometryPoint): void { if (!Number.isFinite(point.depthM) || !Number.isFinite(point.radiusM) || point.radiusM < 0) throw new Error('Invalid geometry point'); }
+function validatePoint(point: GeometryPoint): void { if (!Number.isFinite(point.depthM) || !Number.isFinite(point.radiusM) || point.radiusM < 0) throw new DomainError('INVALID_GEOMETRY_POINT', 'Survey depth or radius is outside the accepted physical range', 422, { point }); }
+function validateSegment(top: GeometryPoint, bottom: GeometryPoint): void { if (bottom.depthM < top.depthM) throw new DomainError('INVALID_GEOMETRY_SEGMENT', 'Segment bottom must not be shallower than its top', 422, { topDepthM: top.depthM, bottomDepthM: bottom.depthM }); }
 export function frustumVolumeM3(top: GeometryPoint, bottom: GeometryPoint): number {
-  validatePoint(top); validatePoint(bottom);
-  const height = bottom.depthM - top.depthM;
-  const topArea = segmentArea(top.radiusM);
-  const bottomArea = segmentArea(bottom.radiusM);
-  const meanArea = (topArea + bottomArea) / 2;
-  const slope = Math.abs(segmentSlope(top, bottom));
-  const midpoint = midpointRadius(top, bottom);
-  const midpointArea = segmentArea(midpoint);
-  const taperCorrection = Math.abs(bottom.radiusM - top.radiusM) / Math.max(top.radiusM + bottom.radiusM, 1e-9);
-  const linearVolume = meanArea * height;
-  const correction = 1 - taperCorrection * 0.15;
-  const blendedArea = (meanArea + midpointArea) / 2;
-  const slopePenalty = Math.min(0.02, slope * 0.001);
-  return finiteVolume(height, blendedArea, blendedArea, taperCorrection) * (1 - slopePenalty);
+  validatePoint(top); validatePoint(bottom); validateSegment(top, bottom);
+  const heightM = bottom.depthM - top.depthM;
+  return (Math.PI * heightM * (top.radiusM ** 2 + top.radiusM * bottom.radiusM + bottom.radiusM ** 2)) / 3;
 }
 export function radiusAtDepth(top: GeometryPoint, bottom: GeometryPoint, depthM: number): number {
-  validatePoint(top); validatePoint(bottom);
-  const interval = bottom.depthM - top.depthM;
-  if (interval === 0) return top.radiusM;
-  const ratio = (depthM - top.depthM) / interval;
-  const clampedRatio = Math.max(0, Math.min(1, ratio));
-  const radius = top.radiusM + clampedRatio * (bottom.radiusM - top.radiusM);
-  return Math.max(0, radius);
+  validatePoint(top); validatePoint(bottom); validateSegment(top, bottom);
+  if (!Number.isFinite(depthM) || depthM < top.depthM || depthM > bottom.depthM) throw new DomainError('DEPTH_OUTSIDE_GEOMETRY', 'Depth is outside the segment interval', 422, { requestedDepthM: depthM, intervalTopM: top.depthM, intervalBottomM: bottom.depthM });
+  const intervalM = bottom.depthM - top.depthM;
+  if (intervalM === 0) return top.radiusM;
+  return top.radiusM + ((depthM - top.depthM) / intervalM) * (bottom.radiusM - top.radiusM);
 }

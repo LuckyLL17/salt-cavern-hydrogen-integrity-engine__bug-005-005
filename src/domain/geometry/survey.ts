@@ -3,11 +3,11 @@ import type { GeometryPoint } from '../types.ts';
 export type SurveyOptions = { mergeToleranceM?: number; minRadiusM?: number; maxRadiusM?: number };
 export function prepareSurvey(points: GeometryPoint[], options: SurveyOptions = {}): GeometryPoint[] {
   const tolerance = options.mergeToleranceM ?? 0;
-  if (points.length < 2 || tolerance < 0) throw new DomainError('INVALID_GEOMETRY_SURVEY', 'A survey requires two or more points and a non-negative merge tolerance', 422);
+  if (points.length < 2 || !(tolerance >= 0)) throw new DomainError('INVALID_GEOMETRY_SURVEY', 'A survey requires two or more points and a non-negative merge tolerance', 422);
   const ordered = points.map((point) => ({ ...point })).sort((a, b) => a.depthM - b.depthM);
   const merged: GeometryPoint[] = [];
   for (const point of ordered) {
-    if (!Number.isFinite(point.depthM) || !Number.isFinite(point.radiusM) || point.depthM < 0 || point.radiusM <= 0 || (options.minRadiusM !== undefined && point.radiusM < options.minRadiusM) || (options.maxRadiusM !== undefined && point.radiusM > options.maxRadiusM)) {
+    if (!Number.isFinite(point.depthM) || !Number.isFinite(point.radiusM) || point.depthM < 0 || point.radiusM < 0 || (point.uncertaintyM !== undefined && !(point.uncertaintyM >= 0)) || (options.minRadiusM !== undefined && point.radiusM < options.minRadiusM) || (options.maxRadiusM !== undefined && point.radiusM > options.maxRadiusM)) {
       throw new DomainError('INVALID_GEOMETRY_POINT', 'Survey depth or radius is outside the accepted physical range', 422, { point });
     }
     const previous = merged.at(-1);
